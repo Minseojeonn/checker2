@@ -22,7 +22,7 @@ def main():
     if args_enviroments.use_mlflow:
         remote_server_uri = "http://192.168.50.2:5001"
         mlflow.set_tracking_uri(remote_server_uri)
-        experiment_name = f"undirected_settings-{args_enviroments.dataset_name}-{args_enviroments.seed}-{args_enviroments.aug}"
+        experiment_name = f"undirected_settings-{args_enviroments.dataset_name}-{args_enviroments.seed}-{args_enviroments.sign}"
         mlflow.set_experiment(experiment_name)
         mlflow.start_run()
 
@@ -32,7 +32,7 @@ def main():
     device = args_enviroments.device
 
     # Step 1. Preprocessing the dataset and load the dataset
-    datatemplate = DataTemplate(args_enviroments.dataset_name, args_enviroments.seed, args_enviroments.split_ratio, args_enviroments.dataset_shuffle, args_enviroments.device, args_enviroments.direction, args_enviroments.input_dim, args_enviroments.aug, args_enviroments.iter_k, args_enviroments.alpha, args_enviroments.eps)
+    datatemplate = DataTemplate(args_enviroments.dataset_name, args_enviroments.seed, args_enviroments.split_ratio, args_enviroments.dataset_shuffle, args_enviroments.device, args_enviroments.direction, args_enviroments.input_dim, args_enviroments.aug, args_enviroments.iter_k, args_enviroments.alpha, args_enviroments.eps, args_enviroments.sign)
     train_dataset, valid_dataset, test_dataset, num_nodes = datatemplate.get_dataset()
     train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=collate_fn)

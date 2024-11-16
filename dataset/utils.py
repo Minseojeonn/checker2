@@ -48,6 +48,7 @@ def split_data(
 def load_data(
     dataset_path: str,
     direction: bool,
+    sign: int
 ) -> np.array:
     """Read data from a file
 
@@ -64,23 +65,17 @@ def load_data(
     edgelist = []
     with open(dataset_path) as f:
         for line in f:
-            a, b, s = map(int, line.split('\t'))
-            if s == -1:
-                s = 0
+            a, b, s, d = map(int, line.split('::'))
+            if sign != -1:
+                if s >= sign:
+                    s = 1
+                else:
+                    s = -1
             edgelist.append((a, b, s))
     num_of_nodes = get_num_nodes(np.array(edgelist))
     edgelist = np.array(edgelist)
-
     assert max(edgelist[:,0]) > min(edgelist[:,1]), "user id and item id must be separated"
     edgelist[:,1] = edgelist[:,1] + num_of_nodes[0]
-    if direction == False:
-        edgelist_2 = edgelist.tolist()
-        temp_edgelist = []
-        for idx, edge in enumerate(edgelist):
-            fr, to, sign = edge
-            temp_edgelist.append([to, fr, sign])
-        edgelist_temp = np.array(temp_edgelist)
-        edgelist = np.concatenate((edgelist, edgelist_temp), axis=0)
     num_edges = np.array(edgelist).shape[0]
     
     return edgelist, num_of_nodes, num_edges
@@ -109,113 +104,7 @@ def collate_fn(batch):
 def edgelist_to_user_item_dict(edgelist: np.array, direction, num_nodes) -> dict:
     user_item_dict = defaultdict(list)    
     for edge in edgelist:
-        if direction:
-            user_item_dict[edge[0]].append(edge[1])
-        else:
-            if edge[0] < num_nodes[0] and edge[1] >= num_nodes[0]:
-                user_item_dict[edge[0]].append(edge[1])
+        user_item_dict[edge[0]].append(edge[1])
+        
     return user_item_dict
-
-def rwr(edgelist, num_nodes, iter_K, alpha, device):
-    sum_nodes = sum(num_nodes)
-    A = torch.sparse_coo_tensor(torch.tensor(edgelist).T, torch.tensor([1]*edgelist.shape[0]), torch.Size([sum_nodes, sum_nodes]), dtype=torch.float32)
-    A = torch.eye(sum_nodes) + A
-    row_sum = torch.sum(A, dim=1)
-    d_inv_row = 1.0 / row_sum.to_dense()
-    d_inv_row[torch.isinf(d_inv_row)] = 0
-    d_inv_matrix = torch.diag(d_inv_row)
-    A = A.to(torch.float32)
-    nA = torch.sparse.mm(d_inv_matrix, A)
-    nAT = nA.T.to(device)
     
-    x0 = torch.eye(sum_nodes).to(device)
-    I = torch.eye(sum_nodes).to(device)
-    x = x0
-    for i in range(iter_K):
-        x = (1-alpha) * torch.sparse.mm(nAT, x) + alpha * I
-
-    return x.T
-
-def rwr_with_filter(edgelist, num_nodes, iter_K, alpha, device, eps):
-    sum_nodes = sum(num_nodes)
-    A = torch.sparse_coo_tensor(torch.tensor(edgelist).T, torch.tensor([1]*edgelist.shape[0]), torch.Size([sum_nodes, sum_nodes]), dtype=torch.float32)
-    
-    A = torch.eye(sum_nodes) + A
-    row_sum = torch.sum(A, dim=1)
-    d_inv_row = 1.0 / row_sum.to_dense()
-    d_inv_row[torch.isinf(d_inv_row)] = 0
-    d_inv_matrix = torch.diag(d_inv_row)
-    A = A.to(torch.float32)
-    nA = torch.sparse.mm(d_inv_matrix, A)
-    nAT = nA.T.to(device)
-    
-    x0 = torch.eye(sum_nodes).to(device)
-    I = torch.eye(sum_nodes).to(device)
-    x = x0
-    for i in range(iter_K):
-        x = (1-alpha) * torch.sparse.mm(nAT, x) + alpha * I
-    x = torch.where(x < eps, torch.tensor(0.0).to(device), x)
-    
-    
-    if torch.sum(torch.sum(x, dim=0) == torch.sum(x, dim=1)) == x.shape[0]:
-        raise ValueError("filtering eps is too high, it remains only diag elements")
-    
-    x = x.T
-    
-    eye_matrix = torch.eye(x.size(0)).to(device)
-    x = x * (1 - eye_matrix)
-    
-    row_sum = torch.sum(x.abs(), dim=1).float() #row sum
-    d_inv_row = torch.pow(row_sum, -0.5).flatten()
-    d_inv_row[torch.isinf(d_inv_row)] = 0.
-    d_mat_row = torch.diag(d_inv_row)
-    norm_adj = d_mat_row @ x.to_dense()  
-    
-    return norm_adj
-    
-def rwr_with_non_weighted_diffusion(edgelist, num_nodes, iter_K, alpha, device, eps):
-    sum_nodes = sum(num_nodes)
-    A = torch.sparse_coo_tensor(torch.tensor(edgelist).T, torch.tensor([1]*edgelist.shape[0]), torch.Size([sum_nodes, sum_nodes]), dtype=torch.float32)
-    
-    A = torch.eye(sum_nodes) + A
-    row_sum = torch.sum(A, dim=1)
-    d_inv_row = 1.0 / row_sum.to_dense()
-    d_inv_row[torch.isinf(d_inv_row)] = 0
-    d_inv_matrix = torch.diag(d_inv_row)
-    A = A.to(torch.float32)
-    nA = torch.sparse.mm(d_inv_matrix, A)
-    nAT = nA.T.to(device)
-    
-    x0 = torch.eye(sum_nodes).to(device)
-    I = torch.eye(sum_nodes).to(device)
-    x = x0
-    for i in range(iter_K):
-        x = (1-alpha) * torch.sparse.mm(nAT, x) + alpha * I
-    file = open("tradeoff.txt", "a")
-    file.write(f"eps: {eps}, alpha: {alpha}, before_filtered: {sum(sum(torch.where(x > 0, torch.tensor(1.0).to(device), x)))}  ")
-    breakpoint()
-    x = torch.where(x < eps, torch.tensor(0.0).to(device), x)
-    
-    
-    if torch.sum(torch.sum(x, dim=0) == torch.sum(x, dim=1)) == x.shape[0]:
-        file.write(f"after_filtering: remain only diag elements \n")
-        file.close()
-        raise ValueError("filtering eps is too high, it remains only diag elements")
-    
-    x = x.T
-    x = torch.where(x > 0, torch.tensor(1.0).to(device), x)
-    
-    #Remove Diag elements
-    eye_matrix = torch.eye(x.size(0)).to(device)
-    x = x * (1 - eye_matrix)
-    
-    
-    file.write(f"after_filtering: {sum(sum(x))}\n")
-    file.close()
-    row_sum = torch.sum(x.abs(), dim=1).float() #row sum
-    d_inv_row = torch.pow(row_sum, -0.5).flatten()
-    d_inv_row[torch.isinf(d_inv_row)] = 0.
-    d_mat_row = torch.diag(d_inv_row)
-    norm_adj = d_mat_row @ x.to_dense()  
-    
-    return norm_adj

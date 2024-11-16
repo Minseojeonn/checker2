@@ -16,7 +16,7 @@ class LightGCN(torch.nn.Module):
         self.num_users, self.num_items  = self.dataset.num_nodes
         self.n_layers = self.config.num_layers           
         self.f = nn.Sigmoid()
-        self.Graph = self.dataset.get_adj_matrix()
+        self.Graph = self.dataset.get_adj_matrix().to(self.config.device)
                 
     def computer(self):
         """

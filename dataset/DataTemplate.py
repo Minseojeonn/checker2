@@ -3,7 +3,7 @@ import numpy as np
 import torch.utils.data.dataset as Dataset
 import torch
 
-from dataset.utils import split_data, load_data, rwr, rwr_with_filter, rwr_with_non_weighted_diffusion
+from dataset.utils import split_data, load_data
 from dataset.DatasetClass import TrnDatasetClass, EvalDatasetClass
 
 
@@ -33,10 +33,11 @@ class DataTemplate(object):
         augmentation: bool,
         iter_k: int,
         alpha: float,
-        eps : float
+        eps : float,
+        sign : int
     ) -> None:
         self.dataset_name = dataset_name
-        self.dataset_path = f"./dataset/{self.dataset_name}.tsv"
+        self.dataset_path = f"./dataset/{self.dataset_name}.txt"
         self.seed = seed
         self.split_ratio = split_ratio
         self.dataset_shuffle = dataset_shuffle
@@ -47,17 +48,21 @@ class DataTemplate(object):
         self.eps = eps
         self.iter_k = iter_k
         self.alpha = alpha
+        self.sign = sign
         assert np.isclose(sum(split_ratio), 1).item(
         ), "sum of split_ratio is not 1"
         self.processing()
         self.build_trainnormajd()
+        self.nomalizing_graph()
         
 
     def processing(
         self,
     ):
         array_of_edges, self.num_nodes, self.num_edges = load_data(
-            self.dataset_path, self.direction)
+            self.dataset_path, self.direction, self.sign)
+        self.num_users = self.num_nodes[0]
+        self.num_items = self.num_nodes[1]
         processed_dataset = split_data(
            array_of_edges ,self.split_ratio, self.seed, self.dataset_shuffle)
         processed_dataset["init_emb"] = self.set_init_embeddings() 
@@ -85,30 +90,45 @@ class DataTemplate(object):
         return [self.embeddings_user, self.embeddings_item]
         
     def build_trainnormajd(self):
-        if self.augmentation:
-            self.adj_matrix = rwr_with_non_weighted_diffusion(self.processed_dataset["train_edges"], self.num_nodes, self.iter_k, self.alpha, self.device, self.eps)
-            dense = self.adj_matrix.to_dense().abs().float()
-            '''
-            self.adj_matrix = rwr_with_filter(self.processed_dataset["train_edges"], self.num_nodes, self.iter_k, self.alpha, self.device, self.eps)
-            col_sum = torch.sum(self.adj_matrix.abs(), dim=0).float() #col sum
-            norm_adj = self.adj_matrix
-            #row normalizaed matrix
-            '''
+        self.train_data = self.processed_dataset["train_edges"]
+        self.train_label = self.processed_dataset["train_label"]
+        user_dim = torch.LongTensor(self.train_data[:,0])
+        item_dim = torch.LongTensor(self.train_data[:,1])
+           
+        first_sub = torch.stack([user_dim, item_dim+self.num_users])
+        second_sub = torch.stack([item_dim+self.num_users, user_dim])
+        index = torch.cat([first_sub, second_sub], dim=1)
+        if self.sign != -1:
+            data = torch.cat([torch.LongTensor(self.train_label) ,torch.LongTensor(self.train_label)])
         else:
-            self.adj_matrix = torch.sparse_coo_tensor(torch.LongTensor(self.processed_dataset["train_edges"]).T, torch.LongTensor(self.processed_dataset["train_label"]), torch.Size([sum(self.num_nodes), sum(self.num_nodes)]), dtype=torch.long, device=self.device)
-            dense = self.adj_matrix.to_dense().abs().float()   
-        row_sum = torch.sum(dense.abs(), dim=1).float() #row sum
-        col_sum = torch.sum(dense.abs(), dim=0).float() #col sum
-        d_inv_row = torch.pow(row_sum, -0.5).flatten()
-        d_inv_row[torch.isinf(d_inv_row)] = 0.
-        d_mat_row = torch.diag(d_inv_row)
-        norm_adj = d_mat_row @ dense
-        d_inv_col = torch.pow(col_sum, -0.5).flatten()
-        d_inv_col[torch.isinf(d_inv_col)] = 0.
-        d_mat_col = torch.diag(d_inv_col)
-        norm_adj = norm_adj @ d_mat_col
-        norm_adj = norm_adj.to_sparse()
-        self.adj_matrix = norm_adj    
+            data = torch.ones(index.size(-1)).int()
+       
+        assert (index.shape[-1] == len(data))
+       
+        self.adj_matrix = torch.sparse.FloatTensor(index, data, torch.Size([self.num_users+self.num_items, self.num_users+self.num_items]))
+    
+    def nomalizing_graph(self):
+        """
+            Calculate the degree of each node in the graph.
+            Args:
+                graph (torch.sparse): torch.sparse matrix 
+                |  0   R |
+                | R.T  0 |
+            Returns:
+                dict: degree of each node in the graph
+        """
+        
+        dense = self.adj_matrix.to_dense()
+        D = torch.sum(abs(dense), dim=1).float()
+        D[D == 0.] = 1. #avoid division by zero
+        D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
+        dense = dense / D_sqrt
+        dense = dense/D_sqrt.t() 
+        index = dense.nonzero()
+        data = dense[torch.logical_or(dense >= 1e-9, dense <= -1e-9)]
+        assert len(index) == len(data)
+        Graph = torch.sparse.FloatTensor(index.t(), data, torch.Size([self.num_items+self.num_users, self.num_items+self.num_users]))
+        self.adj_matrix = Graph.coalesce()
     
     def get_adj_matrix(self):
         return self.adj_matrix
