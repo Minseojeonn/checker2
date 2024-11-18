@@ -1,0 +1,1 @@
+srun: error: s_p_parse_file: unable to status file /etc/slurm/slurm.conf: Permission denied, retrying in 1sec up to 60sec

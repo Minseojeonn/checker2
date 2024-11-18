@@ -69,6 +69,26 @@ class LightGCN(torch.nn.Module):
         loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
         
         return loss, reg_loss
+    
+    def sbpr_loss(self, users, pos, neg, label): #pos = positive items, neg = negative items // item must be one to one
+        pos = pos - self.num_users
+        neg = neg - self.num_users
+        (users_emb, pos_emb, neg_emb, 
+        userEmb0,  posEmb0, negEmb0) = self.getEmbedding(users.long(), pos.long(), neg.long())
+        reg_loss = (1/2)*(userEmb0.norm(2).pow(2) + 
+                         posEmb0.norm(2).pow(2)  +
+                         negEmb0.norm(2).pow(2))/float(len(users))
+        pos_scores = torch.mul(users_emb, pos_emb)
+        pos_scores = torch.sum(pos_scores, dim=1)
+        neg_scores = torch.mul(users_emb, neg_emb)
+        neg_scores = torch.sum(neg_scores, dim=1)
+        
+        label[label == -1] = 2 
+        pos_scores = pos_scores * label
+
+        loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
+        
+        return loss, reg_loss
        
     def forward(self, users, items):
         all_users, all_items = self.computer()

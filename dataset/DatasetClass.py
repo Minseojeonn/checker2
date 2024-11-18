@@ -25,6 +25,7 @@ class TrnDatasetClass(data.Dataset):
         self.unseen_item_dict = self.negative_sampling(self.user_item_dict, num_nodes)
         self.user_list, self.pos = self.flatten(self.user_item_dict)
         self.len = len(self.user_list)
+        self.label = label
             
     def negative_sampling(self, user_item_dict: dict, num_nodes: tuple) -> dict:
         """
@@ -62,7 +63,7 @@ class TrnDatasetClass(data.Dataset):
     
     def __getitem__(self, index):
         # 각 데이터셋의 배치를 반환
-        return  self.user_list[index], self.pos[index], self.get_neg_smaples(self.user_list[index]) 
+        return  self.user_list[index], self.pos[index], self.get_neg_smaples(self.user_list[index]), self.label[index]
     
     def get_seen_nodes(self):
         return self.user_item_dict

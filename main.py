@@ -22,7 +22,7 @@ def main():
     if args_enviroments.use_mlflow:
         remote_server_uri = "http://192.168.50.2:5001"
         mlflow.set_tracking_uri(remote_server_uri)
-        experiment_name = f"undirected_settings-{args_enviroments.dataset_name}-{args_enviroments.seed}-{args_enviroments.sign}"
+        experiment_name = f"undirected_settings-{args_enviroments.dataset_name}-{args_enviroments.seed}-{args_enviroments.sign}-sbpr={args_enviroments.sbpr}"
         mlflow.set_experiment(experiment_name)
         mlflow.start_run()
 
@@ -70,9 +70,12 @@ def main():
         for batch in train_loader:
             #label is not used, cause it is unsigned model
             opt.zero_grad()
-            user, pos, neg = batch
-            user, pos, neg = user.to(device), pos.to(device), neg.to(device)
-            loss_1, loss_2 = model.bpr_loss(user, pos, neg)
+            user, pos, neg, label = batch
+            user, pos, neg, label = user.to(device), pos.to(device), neg.to(device), label.to(device)
+            if args_enviroments.sbpr == 1:
+                loss_1, loss_2 = model.sbpr_loss(user, pos, neg, label)
+            else:
+                loss_1, loss_2 = model.bpr_loss(user, pos, neg)
             loss = loss_1 + args_enviroments.wdc * loss_2
             loss.backward()
             opt.step()

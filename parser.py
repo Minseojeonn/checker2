@@ -22,5 +22,6 @@ def parsing():
     parser.add_argument('--sign', default=3, type=int, help='beta')
     parser.add_argument('--indure', default=5, type=int, help='indure')
     parser.add_argument('--eps', default=1e-9, type=float, help='eps')
+    parser.add_argument('--sbpr', default=1, type=int, help='1 = sbpr loss , 0 = original bpr loss')
     args = parser.parse_args()
     return args

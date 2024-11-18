@@ -9,7 +9,7 @@ do
     do
         for layers in 1 3
         do
-            for sign in -1 3 4
+            for sign in 3 4
             do
                 srun --gpu-bind=single:1 python -m main --sign ${sign} --input_dim ${input_dim} --learning_rate ${lr} --layers ${layers} --seed 100
             done
