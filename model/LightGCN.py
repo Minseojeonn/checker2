@@ -53,7 +53,21 @@ class LightGCN(torch.nn.Module):
         
         return users_emb, pos_emb, neg_emb, users_emb_ego, pos_emb_ego, neg_emb_ego
     
-    def bpr_loss(self, users, pos, neg): #pos = positive items, neg = negative items // item must be one to one
+    def getEmbeddingcustom(self, users, stpos_items, wkpos_items, neg_items):
+        all_users, all_items = self.computer()
+        users_emb = all_users[users]
+        stpos_emb = all_items[stpos_items]
+        wkpos_emb = all_items[wkpos_items]
+        neg_emb = all_items[neg_items]
+        
+        users_emb_ego = self.embedding_user(users)
+        stpos_emb_ego = self.embedding_item(stpos_items)
+        wkpos_emb_ego = self.embedding_item(wkpos_items)
+        neg_emb_ego = self.embedding_item(neg_items)
+        
+        return users_emb, stpos_emb, wkpos_emb, neg_emb, users_emb_ego, stpos_emb_ego, wkpos_emb_ego, neg_emb_ego
+    
+    def bpr_loss(self, users, pos, neg, label): #pos = positive items, neg = negative items // item must be one to one
         pos = pos - self.num_users
         neg = neg - self.num_users
         (users_emb, pos_emb, neg_emb, 
@@ -65,7 +79,6 @@ class LightGCN(torch.nn.Module):
         pos_scores = torch.sum(pos_scores, dim=1)
         neg_scores = torch.mul(users_emb, neg_emb)
         neg_scores = torch.sum(neg_scores, dim=1)
-        
         loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
         
         return loss, reg_loss
@@ -83,13 +96,36 @@ class LightGCN(torch.nn.Module):
         neg_scores = torch.mul(users_emb, neg_emb)
         neg_scores = torch.sum(neg_scores, dim=1)
         
-        label[label == -1] = 2 
+        label[label == -1] = 0.5 
         pos_scores = pos_scores * label
 
         loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
         
         return loss, reg_loss
        
+    def mybpr_loss(self, users, strongpos, weakpos, neg, label):
+        strongpos = strongpos - self.num_users
+        weakpos = weakpos - self.num_users
+        neg = neg - self.num_users
+        (users_emb, strongpos_emb, weakpos_emb, neg_emb,
+        userEmb0, strongposEmb0, weakposEmb0, negEmb0) = self.getEmbedding(users.long(), strongpos.long(), weakpos.long(), neg.long())
+        
+        emb_diff = weakpos_emb - strongpos_emb
+        adj_neg_emb = neg_emb + emb_diff
+        pos_scores = torch.mul(users_emb, strongpos_emb)
+        pos_scores = torch.sum(pos_scores, dim=1)
+        neg_scores = torch.mul(users_emb, adj_neg_emb)
+        neg_scores = torch.sum(neg_scores, dim=1)
+        
+        loss = torch.mean(torch.nn.functional.softplus(neg_scores - pos_scores))
+        reg_loss = self.reg_weight * (
+            torch.norm(userEmb0) ** 2 +
+            torch.norm(strongposEmb0) ** 2 +
+            torch.norm(negEmb0) ** 2
+        )
+        
+        return loss, reg_loss
+    
     def forward(self, users, items):
         all_users, all_items = self.computer()
         users_emb = all_users[users]

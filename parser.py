@@ -5,7 +5,7 @@ def parsing():
     parser = argparse.ArgumentParser(description='Python parser usage.')
     parser.add_argument('--device', default="cuda:0", type=str, help='device')
     parser.add_argument('--seed', default=0, type=int, help='seed')
-    parser.add_argument('--use_mlflow', default=True, type=bool, help='use_mlflow')
+    parser.add_argument('--use_mlflow', default=False, type=bool, help='use_mlflow')
     parser.add_argument('--dataset_name', default="ml-1m", type=str, help='dataset_name')
     parser.add_argument('--split_ratio', default=[0.8, 0.1, 0.1], type=list, help='split_ratio')
     parser.add_argument('--dataset_shuffle', default=True, type=bool, help='dataset_shuffle')
@@ -22,6 +22,6 @@ def parsing():
     parser.add_argument('--sign', default=3, type=int, help='beta')
     parser.add_argument('--indure', default=5, type=int, help='indure')
     parser.add_argument('--eps', default=1e-9, type=float, help='eps')
-    parser.add_argument('--sbpr', default=1, type=int, help='1 = sbpr loss , 0 = original bpr loss')
+    parser.add_argument('--sbpr', default=0, type=int, help='1 = sbpr loss , 0 = original bpr loss')
     args = parser.parse_args()
     return args

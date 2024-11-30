@@ -39,6 +39,21 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False, num_workers=0, collate_fn=collate_fn)
     seen_items = train_dataset.get_seen_nodes()
     
+    #define hard, easy positive
+    estim_loader = DataLoader(train_dataset, batch_size=1, shuffle=False, num_workers=0)
+    model = LightGCN(args_enviroments, datatemplate).to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=args_enviroments.lr)
+    for epoch in range(args_enviroments.epochs):
+        model.train()
+        for batch in estim_loader:
+            opt.zero_grad()
+            user, pos, neg, label = batch
+            user, pos, neg, label = user.to(device), pos.to(device), neg.to(device), label.to(device)
+            loss_1, loss_2 = model.bpr_loss(user, pos, neg, label)
+            loss = loss_1 + args_enviroments.wdc * loss_2
+            loss.backward()
+            opt.step()
+            
     
     # Step 2. Model definition
     model = LightGCN(args_enviroments, datatemplate).to(device)
@@ -74,8 +89,8 @@ def main():
             user, pos, neg, label = user.to(device), pos.to(device), neg.to(device), label.to(device)
             if args_enviroments.sbpr == 1:
                 loss_1, loss_2 = model.sbpr_loss(user, pos, neg, label)
-            else:
-                loss_1, loss_2 = model.bpr_loss(user, pos, neg)
+            elif args_enviroments.sbpr == 0:
+                loss_1, loss_2 = model.bpr_loss(user, pos, neg, label)
             loss = loss_1 + args_enviroments.wdc * loss_2
             loss.backward()
             opt.step()
